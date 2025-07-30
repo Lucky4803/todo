@@ -1,16 +1,23 @@
-# Node Base Image
+# Base image
 FROM node:12.2.0-alpine
 
-#Working Directry
+# Set working directory
 WORKDIR /node
 
-#Copy the Code
+# Copy only package files first (helps caching)
+COPY package*.json ./
+
+# Install dependencies (will be cached unless package.json changes)
+RUN npm install
+
+# Now copy the rest of the code
 COPY . .
 
-#Install the dependecies
-RUN npm install
+# Run tests
 RUN npm run test
+
+# Expose the app
 EXPOSE 8000
 
-#Run the code
-CMD ["node","app.js"]
+# Start the app
+CMD ["node", "app.js"]
