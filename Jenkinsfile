@@ -1,49 +1,66 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_BUILDKIT = '1' // Enables BuildKit for better caching
+    }
+
     stages {
         stage("Code Clone") {
             steps {
-                echo "Code Clone Stage"
+                echo "Cloning code..."
                 git url: "https://github.com/Lucky4803/todo.git", branch: "main"
             }
         }
 
-        stage("Code Build & Test") {
+        stage("Docker Build with Cache") {
             steps {
-                echo "Code Build Stage"
+                echo "Building Docker image with cache..."
                 withCredentials([usernamePassword(
                     credentialsId: "dockerHubCreds",
                     usernameVariable: "dockerHubUser", 
                     passwordVariable: "dockerHubPass"
                 )]) {
-                    sh 'echo $dockerHubPass | docker login -u $dockerHubUser --password-stdin'
-                    sh """
+                    sh '''
+                        echo "$dockerHubPass" | docker login -u "$dockerHubUser" --password-stdin
+
+                        # Try to pull the latest image to use its cache
                         docker pull $dockerHubUser/node-app:latest || true
-                        docker build --cache-from=$dockerHubUser/node-app:latest -t node-app .
-                    """
+
+                        # Build the image using cache-from and inline caching
+                        docker build \
+                          --cache-from=$dockerHubUser/node-app:latest \
+                          --build-arg BUILDKIT_INLINE_CACHE=1 \
+                          -t node-app:latest .
+                    '''
                 }
             }
         }
 
-        stage("Push To DockerHub") {
+        stage("Push to DockerHub") {
             steps {
+                echo "Pushing image to DockerHub..."
                 withCredentials([usernamePassword(
                     credentialsId: "dockerHubCreds",
                     usernameVariable: "dockerHubUser", 
                     passwordVariable: "dockerHubPass"
                 )]) {
-                    sh 'echo $dockerHubPass | docker login -u $dockerHubUser --password-stdin'
-                    sh "docker image tag node-app:latest $dockerHubUser/node-app:latest"
-                    sh "docker push $dockerHubUser/node-app:latest"
+                    sh '''
+                        echo "$dockerHubPass" | docker login -u "$dockerHubUser" --password-stdin
+                        docker tag node-app:latest $dockerHubUser/node-app:latest
+                        docker push $dockerHubUser/node-app:latest
+                    '''
                 }
             }
         }
 
-        stage("Deploy") {
+        stage("Deploy with Compose") {
             steps {
-                sh "docker compose down || true"
-                sh "docker compose up -d --build"
+                echo "Deploying with Docker Compose..."
+                sh '''
+                    docker compose down || true
+                    docker compose up -d --build
+                '''
             }
         }
     }
