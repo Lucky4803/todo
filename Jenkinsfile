@@ -12,7 +12,17 @@ pipeline {
         stage("Code Build & Test") {
             steps {
                 echo "Code Build Stage"
-                sh "docker build -t node-app ."
+                withCredentials([usernamePassword(
+                    credentialsId: "dockerHubCreds",
+                    usernameVariable: "dockerHubUser", 
+                    passwordVariable: "dockerHubPass"
+                )]) {
+                    sh 'echo $dockerHubPass | docker login -u $dockerHubUser --password-stdin'
+                    sh """
+                        docker pull $dockerHubUser/node-app:latest || true
+                        docker build --cache-from=$dockerHubUser/node-app:latest -t node-app .
+                    """
+                }
             }
         }
 
